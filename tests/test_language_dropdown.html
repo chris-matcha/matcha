@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Language Dropdown</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        select { width: 300px; padding: 8px; }
+    </style>
+    <script>
+        // Function to show/hide language dropdown
+        function updateLanguageOptions() {
+            var profile = document.getElementById('profile').value;
+            var languageDiv = document.getElementById('language_div');
+            var targetLanguageSelect = document.getElementById('target_language');
+            
+            // Show language dropdown for all profiles
+            languageDiv.style.display = 'block';
+            // Ensure the field is enabled when visible
+            targetLanguageSelect.disabled = false;
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            updateLanguageOptions();
+            document.getElementById('profile').addEventListener('change', updateLanguageOptions);
+        });
+    </script>
+</head>
+<body>
+    <h1>Test: Language Dropdown for All Profiles</h1>
+    
+    <div class="form-group">
+        <label for="profile">Select learning profile:</label>
+        <select id="profile" name="profile" required>
+            <option value="dyslexia">Dyslexia Support</option>
+            <option value="adhd">ADHD Support</option>
+            <option value="esl">English Language Learner</option>
+            <option value="translation">Translation Only</option>
+            <option value="dyslexia_translation">Dyslexia Support + Translation</option>
+            <option value="adhd_translation">ADHD Support + Translation</option>
+            <option value="esl_translation">ESL Support + Translation</option>
+        </select>
+    </div>
+    
+    <div id="language_div" class="form-group" style="display:none;">
+        <label for="target_language">Optional: Translate to language</label>
+        <select id="target_language" name="target_language">
+            <option value="">English only (no translation)</option>
+            <option value="spanish">Spanish</option>
+            <option value="french">French</option>
+            <option value="german">German</option>
+            <option value="italian">Italian</option>
+            <option value="portuguese">Portuguese</option>
+            <option value="polish">Polish</option>
+            <option value="ukrainian">Ukrainian</option>
+            <option value="chinese">Chinese</option>
+            <option value="japanese">Japanese</option>
+            <option value="arabic">Arabic</option>
+            <option value="hindi">Hindi</option>
+            <option value="russian">Russian</option>
+        </select>
+    </div>
+    
+    <p><strong>Test Instructions:</strong></p>
+    <ol>
+        <li>Change the learning profile dropdown above</li>
+        <li>Notice that the language dropdown should now appear for ALL profiles (Dyslexia, ADHD, and ESL)</li>
+        <li>The label should say "Optional: Translate to language"</li>
+        <li>This demonstrates that users can now get translations for any profile</li>
+    </ol>
+</body>
+</html>

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Register - Matcha{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 400px; margin: 50px auto;">
+    <h2 class="text-center" style="margin-bottom: 30px; color: #2c3e50;">Create Account</h2>
+    
+    <form method="POST" action="{{ url_for('register') }}">
+        {{ form.hidden_tag() }}
+        
+        <div class="form-group">
+            {{ form.username.label(class="form-label") }}
+            {{ form.username(class="form-control") }}
+            {% if form.username.errors %}
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">
+                    {% for error in form.username.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            {{ form.email.label(class="form-label") }}
+            {{ form.email(class="form-control") }}
+            {% if form.email.errors %}
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">
+                    {% for error in form.email.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            {{ form.password.label(class="form-label") }}
+            {{ form.password(class="form-control") }}
+            {% if form.password.errors %}
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">
+                    {% for error in form.password.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            {{ form.password2.label(class="form-label") }}
+            {{ form.password2(class="form-control") }}
+            {% if form.password2.errors %}
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">
+                    {% for error in form.password2.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group text-center">
+            {{ form.submit(class="btn") }}
+        </div>
+    </form>
+
+    <div class="text-center" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+        <p style="color: #666;">Already have an account? <a href="{{ url_for('login') }}" style="color: #3498db;">Login here</a></p>
+    </div>
+</div>
+{% endblock %}

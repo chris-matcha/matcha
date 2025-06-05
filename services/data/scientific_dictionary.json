@@ -1,0 +1,187 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "created": "2025-06-04T16:41:56.133684",
+    "last_updated": "2025-06-04T16:41:56.134943",
+    "total_terms": 16
+  },
+  "terms": {
+    "Fe2O3": {
+      "category": "chemistry",
+      "type": "chemical_formula",
+      "adaptations": {
+        "dyslexia": "Iron oxide (Fe2O3) - rust compound",
+        "adhd": "Fe2O3 = Iron rust",
+        "esl": "Fe2O3 (iron oxide - a rust compound made of iron and oxygen)"
+      },
+      "definition": "Iron(III) oxide, commonly known as rust",
+      "usage_count": 0
+    },
+    "CO2": {
+      "category": "chemistry",
+      "type": "chemical_formula",
+      "adaptations": {
+        "dyslexia": "Carbon dioxide (CO2) - gas we breathe out",
+        "adhd": "CO2 = Gas from breathing",
+        "esl": "CO2 (carbon dioxide - the gas humans breathe out)"
+      },
+      "definition": "Carbon dioxide, a greenhouse gas",
+      "usage_count": 0
+    },
+    "H2O": {
+      "category": "chemistry",
+      "type": "chemical_formula",
+      "adaptations": {
+        "dyslexia": "Water (H2O) - two hydrogen, one oxygen",
+        "adhd": "H2O = Water",
+        "esl": "H2O (water - made of hydrogen and oxygen atoms)"
+      },
+      "definition": "Water molecule",
+      "usage_count": 0
+    },
+    "NaCl": {
+      "category": "chemistry",
+      "type": "chemical_formula",
+      "adaptations": {
+        "dyslexia": "Salt (NaCl) - table salt",
+        "adhd": "NaCl = Table salt",
+        "esl": "NaCl (sodium chloride - common table salt)"
+      },
+      "definition": "Sodium chloride, table salt",
+      "usage_count": 0
+    },
+    "H2SO4": {
+      "category": "chemistry",
+      "type": "chemical_formula",
+      "adaptations": {
+        "dyslexia": "Sulfuric acid (H2SO4) - strong acid",
+        "adhd": "H2SO4 = Powerful acid",
+        "esl": "H2SO4 (sulfuric acid - a very strong and dangerous acid)"
+      },
+      "definition": "Sulfuric acid, a strong mineral acid",
+      "usage_count": 0
+    },
+    "DNA": {
+      "category": "biology",
+      "type": "abbreviation",
+      "adaptations": {
+        "dyslexia": "DNA - genetic code in cells",
+        "adhd": "DNA = Your genetic blueprint",
+        "esl": "DNA (genetic material that controls how living things grow)"
+      },
+      "definition": "Deoxyribonucleic acid, genetic material",
+      "usage_count": 0
+    },
+    "RNA": {
+      "category": "biology",
+      "type": "abbreviation",
+      "adaptations": {
+        "dyslexia": "RNA - helps make proteins",
+        "adhd": "RNA = Protein maker",
+        "esl": "RNA (ribonucleic acid - helps cells make proteins)"
+      },
+      "definition": "Ribonucleic acid, involved in protein synthesis",
+      "usage_count": 0
+    },
+    "ATP": {
+      "category": "biology",
+      "type": "abbreviation",
+      "adaptations": {
+        "dyslexia": "ATP - cell energy",
+        "adhd": "ATP = Cell battery",
+        "esl": "ATP (cell energy - like a battery for living cells)"
+      },
+      "definition": "Adenosine triphosphate, cellular energy currency",
+      "usage_count": 0
+    },
+    "pH": {
+      "category": "chemistry",
+      "type": "measurement",
+      "adaptations": {
+        "dyslexia": "pH - acid level (0-14 scale)",
+        "adhd": "pH = Acid strength",
+        "esl": "pH (acidity level - scale from 0 to 14)"
+      },
+      "definition": "Measure of acidity or alkalinity",
+      "usage_count": 0
+    },
+    "MHz": {
+      "category": "physics",
+      "type": "unit",
+      "adaptations": {
+        "dyslexia": "MHz - radio wave speed",
+        "adhd": "MHz = Radio frequency",
+        "esl": "MHz (megahertz - how fast radio waves vibrate)"
+      },
+      "definition": "Megahertz, unit of frequency",
+      "usage_count": 0
+    },
+    "UV": {
+      "category": "physics",
+      "type": "abbreviation",
+      "adaptations": {
+        "dyslexia": "UV light - invisible sun rays",
+        "adhd": "UV = Invisible sunlight",
+        "esl": "UV (ultraviolet light - invisible rays from the sun)"
+      },
+      "definition": "Ultraviolet radiation",
+      "usage_count": 0
+    },
+    "log": {
+      "category": "mathematics",
+      "type": "function",
+      "adaptations": {
+        "dyslexia": "log - math function for big numbers",
+        "adhd": "log = Special math operation",
+        "esl": "log (logarithm - mathematical operation for large numbers)"
+      },
+      "definition": "Logarithm, mathematical function",
+      "usage_count": 0
+    },
+    "sin": {
+      "category": "mathematics",
+      "type": "function",
+      "adaptations": {
+        "dyslexia": "sin - triangle math",
+        "adhd": "sin = Triangle function",
+        "esl": "sin (sine - mathematical function used with triangles)"
+      },
+      "definition": "Sine, trigonometric function",
+      "usage_count": 0
+    },
+    "BMI": {
+      "category": "medical",
+      "type": "abbreviation",
+      "adaptations": {
+        "dyslexia": "BMI - body weight measure",
+        "adhd": "BMI = Health weight index",
+        "esl": "BMI (body mass index - measures if weight is healthy)"
+      },
+      "definition": "Body Mass Index, health metric",
+      "usage_count": 0
+    },
+    "ECG": {
+      "category": "medical",
+      "type": "abbreviation",
+      "adaptations": {
+        "dyslexia": "ECG - heart test",
+        "adhd": "ECG = Heart monitor",
+        "esl": "ECG (electrocardiogram - test that shows heart rhythm)"
+      },
+      "definition": "Electrocardiogram, heart rhythm test",
+      "usage_count": 0
+    },
+    "mRNA": {
+      "category": "biology",
+      "type": "abbreviation",
+      "adaptations": {
+        "dyslexia": "mRNA - messenger RNA, carries genetic info",
+        "adhd": "mRNA = Genetic messenger",
+        "esl": "mRNA (messenger RNA - carries genetic instructions)"
+      },
+      "definition": "Messenger RNA, carries genetic information from DNA",
+      "usage_count": 0,
+      "added_date": "2025-06-04T16:41:56.134938"
+    }
+  }
+}

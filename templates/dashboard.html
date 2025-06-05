@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Matcha{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Welcome to Matcha, {{ current_user.username }}! 🍃</h1>
+    <p style="color: #666; font-size: 18px;">Transform your educational content with AI-powered adaptations</p>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+    
+    <!-- Upload Section -->
+    <div class="card">
+        <h3 style="color: #2c3e50; margin-top: 0;">📤 Upload Document</h3>
+        <p>Upload PDF or PowerPoint files for adaptive learning processing</p>
+        <a href="{{ url_for('upload') }}" class="btn">Upload New File</a>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <h3 style="color: #2c3e50; margin-top: 0;">📋 Recent Activity</h3>
+        <p style="color: #666;">No recent uploads yet</p>
+        <div style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin-top: 15px;">
+            <p style="margin: 0; font-size: 14px; color: #495057;">
+                💡 <strong>Tip:</strong> Start by uploading a PDF or PowerPoint presentation to see Matcha's adaptive learning features in action!
+            </p>
+        </div>
+    </div>
+
+    <!-- Profile Management -->
+    <div class="card">
+        <h3 style="color: #2c3e50; margin-top: 0;">👤 Profile</h3>
+        <p><strong>Username:</strong> {{ current_user.username }}</p>
+        <p><strong>Email:</strong> {{ current_user.email }}</p>
+        <p><strong>Member since:</strong> {{ current_user.created_at.strftime('%B %d, %Y') if current_user.created_at else 'Recently' }}</p>
+        <a href="{{ url_for('profile') }}" class="btn">Manage Profile</a>
+    </div>
+
+    <!-- Learning Profiles -->
+    <div class="card">
+        <h3 style="color: #2c3e50; margin-top: 0;">🎯 Adaptation Types</h3>
+        <div style="margin: 15px 0;">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span style="background-color: #3498db; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; margin-right: 10px;">DYSLEXIA</span>
+                <span style="font-size: 14px;">Font optimization, spacing, colors</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span style="background-color: #e74c3c; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; margin-right: 10px;">ADHD</span>
+                <span style="font-size: 14px;">Simplified structure, focus aids</span>
+            </div>
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <span style="background-color: #27ae60; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; margin-right: 10px;">ESL</span>
+                <span style="font-size: 14px;">Language simplification, vocabulary</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Status -->
+    <div class="card">
+        <h3 style="color: #2c3e50; margin-top: 0;">⚡ System Status</h3>
+        <div id="system-status">
+            <p class="loading">Checking system status...</p>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card">
+        <h3 style="color: #2c3e50; margin-top: 0;">🚀 Quick Actions</h3>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <a href="{{ url_for('upload') }}" class="btn">Upload Document</a>
+            <a href="{{ url_for('profile') }}" class="btn" style="background-color: #95a5a6;">Edit Profile</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-danger">Sign Out</a>
+        </div>
+    </div>
+</div>
+
+<script>
+// Check system status
+fetch('/api/status')
+    .then(response => response.json())
+    .then(data => {
+        const statusDiv = document.getElementById('system-status');
+        if (data.status === 'ok') {
+            statusDiv.innerHTML = `
+                <div style="color: #27ae60;">
+                    <p>✅ System operational</p>
+                    <p style="font-size: 14px; margin: 5px 0;">AI Processing: ${data.api_available ? '✅ Available' : '❌ Unavailable'}</p>
+                    <p style="font-size: 14px; margin: 5px 0;">User: ${data.user}</p>
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = '<p style="color: #e74c3c;">❌ System issues detected</p>';
+        }
+    })
+    .catch(error => {
+        document.getElementById('system-status').innerHTML = '<p style="color: #f39c12;">⚠️ Unable to check status</p>';
+    });
+</script>
+{% endblock %}

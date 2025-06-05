@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Upload - Matcha{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    <h2 style="color: #2c3e50; margin-bottom: 20px;">📤 Upload Document</h2>
+    <p style="color: #666; margin-bottom: 30px;">
+        Upload your PDF or PowerPoint presentation to create adaptive learning content
+    </p>
+
+    <form method="POST" enctype="multipart/form-data">
+        {{ form.hidden_tag() }}
+        
+        <div class="form-group">
+            {{ form.file.label(class="form-label") }}
+            {{ form.file(class="form-control", accept=".pdf,.pptx,.ppt") }}
+            {% if form.file.errors %}
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">
+                    {% for error in form.file.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <div style="font-size: 14px; color: #666; margin-top: 5px;">
+                Supported formats: PDF, PowerPoint (.pptx, .ppt) • Max size: 50MB
+            </div>
+        </div>
+
+        <div class="form-group">
+            {{ form.adaptation_type.label(class="form-label") }}
+            {{ form.adaptation_type(class="form-control") }}
+            {% if form.adaptation_type.errors %}
+                <div style="color: #e74c3c; font-size: 14px; margin-top: 5px;">
+                    {% for error in form.adaptation_type.errors %}
+                        {{ error }}
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            {{ form.submit(class="btn", style="width: 100%;") }}
+        </div>
+    </form>
+
+    <!-- Information about adaptation types -->
+    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 4px; margin-top: 30px;">
+        <h4 style="margin-top: 0; color: #495057;">Adaptation Types:</h4>
+        
+        <div style="margin-bottom: 15px;">
+            <strong style="color: #3498db;">Dyslexia-Friendly:</strong>
+            <ul style="margin: 5px 0; padding-left: 20px; color: #666;">
+                <li>OpenDyslexic or Arial fonts</li>
+                <li>Increased line spacing</li>
+                <li>High contrast colors</li>
+                <li>Structured layout</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <strong style="color: #e74c3c;">ADHD Support:</strong>
+            <ul style="margin: 5px 0; padding-left: 20px; color: #666;">
+                <li>Simplified content structure</li>
+                <li>Key information highlighting</li>
+                <li>Reduced cognitive load</li>
+                <li>Clear section breaks</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <strong style="color: #27ae60;">ESL (English as Second Language):</strong>
+            <ul style="margin: 5px 0; padding-left: 20px; color: #666;">
+                <li>Simplified vocabulary</li>
+                <li>Shorter sentences</li>
+                <li>Key term definitions</li>
+                <li>Cultural context notes</li>
+            </ul>
+        </div>
+
+        <div>
+            <strong style="color: #95a5a6;">General Accessibility:</strong>
+            <ul style="margin: 5px 0; padding-left: 20px; color: #666;">
+                <li>Improved readability</li>
+                <li>Better structure</li>
+                <li>Enhanced navigation</li>
+                <li>Multi-modal support</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="text-center" style="margin-top: 20px;">
+        <a href="{{ url_for('index') }}" style="color: #3498db; text-decoration: none;">← Back to Dashboard</a>
+    </div>
+</div>
+
+<script>
+// File upload validation
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.querySelector('input[type="file"]');
+    const form = document.querySelector('form');
+    
+    fileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            // Check file size (50MB limit)
+            const maxSize = 50 * 1024 * 1024; // 50MB in bytes
+            if (file.size > maxSize) {
+                alert('File is too large. Maximum size is 50MB.');
+                e.target.value = '';
+                return;
+            }
+            
+            // Check file type
+            const allowedTypes = ['.pdf', '.pptx', '.ppt'];
+            const fileName = file.name.toLowerCase();
+            const isValidType = allowedTypes.some(type => fileName.endsWith(type));
+            
+            if (!isValidType) {
+                alert('Invalid file type. Please upload PDF or PowerPoint files only.');
+                e.target.value = '';
+                return;
+            }
+        }
+    });
+    
+    // Show loading state on form submission
+    form.addEventListener('submit', function() {
+        const submitBtn = form.querySelector('input[type="submit"]');
+        submitBtn.value = 'Processing...';
+        submitBtn.disabled = true;
+    });
+});
+</script>
+{% endblock %}
