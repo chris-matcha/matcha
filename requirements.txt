@@ -14,9 +14,12 @@ pdf2image==1.16.3
 Pillow==10.0.0
 tenacity==8.2.0
 PyMuPDF==1.23.8
-matplotlib==3.7.2
 bcrypt==4.0.1
 email-validator==2.0.0
+
+# Fix NumPy compatibility issue
+numpy<2.0.0
+matplotlib==3.7.2
 
 # Production dependencies
 gunicorn==21.2.0

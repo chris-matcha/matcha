@@ -8,11 +8,50 @@ import anthropic
 import re
 import io
 import base64
-import matplotlib.pyplot as plt
 import threading
-import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
 import json
+
+# Handle matplotlib import gracefully
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    import matplotlib.pyplot as plt
+    MATPLOTLIB_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: matplotlib not available - chart generation disabled: {e}")
+    MATPLOTLIB_AVAILABLE = False
+    # Create dummy plt object
+    class DummyPlt:
+        @staticmethod
+        def figure(*args, **kwargs): pass
+        @staticmethod
+        def bar(*args, **kwargs): pass
+        @staticmethod
+        def barh(*args, **kwargs): pass
+        @staticmethod
+        def axhline(*args, **kwargs): pass
+        @staticmethod
+        def xlabel(*args, **kwargs): pass
+        @staticmethod
+        def ylabel(*args, **kwargs): pass
+        @staticmethod
+        def title(*args, **kwargs): pass
+        @staticmethod
+        def legend(*args, **kwargs): pass
+        @staticmethod
+        def grid(*args, **kwargs): pass
+        @staticmethod
+        def text(*args, **kwargs): pass
+        @staticmethod
+        def ylim(*args, **kwargs): pass
+        @staticmethod
+        def savefig(*args, **kwargs): pass
+        @staticmethod
+        def close(*args, **kwargs): pass
+        @staticmethod
+        def axis(*args, **kwargs): pass
+    
+    plt = DummyPlt()
 from api_utils import ApiUtils, API_CHECK_SUCCESS_TEMPLATE, API_CHECK_ERROR_TEMPLATE
 from migrate_pdf_functions import PDFMigrationHelper
 
@@ -1522,6 +1561,10 @@ def find_complex_words(text):
 
 def generate_complexity_chart(slide_texts, profile):
     """Generate a chart showing content complexity across slides"""
+    # Check if matplotlib is available
+    if not MATPLOTLIB_AVAILABLE:
+        return generate_placeholder_chart("Chart generation unavailable - matplotlib not installed")
+    
     # Create data for visualization
     slide_numbers = []
     complexity_scores = []
@@ -1579,6 +1622,10 @@ def generate_complexity_chart(slide_texts, profile):
 
 def generate_complex_words_chart(complex_words):
     """Generate a bar chart showing most frequent complex words"""
+    # Check if matplotlib is available
+    if not MATPLOTLIB_AVAILABLE:
+        return generate_placeholder_chart("Chart generation unavailable - matplotlib not installed")
+    
     try:
         # If no complex words found
         if not complex_words:
@@ -1617,6 +1664,11 @@ def generate_complex_words_chart(complex_words):
 
 def generate_placeholder_chart(message="No data available"):
     """Generate a placeholder chart with a message"""
+    # If matplotlib is not available, return a simple fallback
+    if not MATPLOTLIB_AVAILABLE:
+        # Return a minimal base64 encoded 1x1 transparent PNG
+        return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+    
     try:
         plt.figure(figsize=(8, 4))
         
