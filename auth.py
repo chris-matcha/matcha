@@ -136,7 +136,11 @@ class User(UserMixin):
             # Create default admin user if none exists
             cursor.execute("SELECT COUNT(*) FROM users")
             if cursor.fetchone()[0] == 0:
-                admin_password = generate_password_hash('admin123')  # Change this!
+                # Generate a secure default password - CHANGE THIS IN PRODUCTION!
+                import secrets
+                default_password = secrets.token_urlsafe(16)
+                admin_password = generate_password_hash(default_password)
+                print(f"Default admin password: {default_password}")
                 cursor.execute("""
                     INSERT INTO users (username, email, password_hash, created_at, is_active)
                     VALUES (?, ?, ?, ?, ?)
