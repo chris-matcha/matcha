@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+matcha_env/
+.venv
+
+# Development
+.env
+.env.local
+*.log
+*.sqlite
+*.db
+instance/
+*.pid
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+uploads/*
+outputs/*
+logs/*
+media/*
+temp/*
+ssl/*
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+test_*/
+tests/
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Keep structure
+!uploads/.gitkeep
+!outputs/.gitkeep
+!logs/.gitkeep

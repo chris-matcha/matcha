@@ -17,3 +17,8 @@ PyMuPDF==1.23.8
 matplotlib==3.7.2
 bcrypt==4.0.1
 email-validator==2.0.0
+
+# Production dependencies
+gunicorn==21.2.0
+redis==5.0.1
+python-magic==0.4.27
