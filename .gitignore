@@ -49,9 +49,17 @@ matcha.db
 # Uploads and outputs (user data)
 uploads/*
 outputs/*
+test_outputs/*
 media/*
 temp/*
 static/uploads/*
+
+# Large files that shouldn't be committed
+*.pdf
+*.pptx
+*.ppt
+*.docx
+*.xlsx
 
 # But keep directory structure
 !uploads/.gitkeep
@@ -59,6 +67,7 @@ static/uploads/*
 !media/.gitkeep
 !temp/.gitkeep
 !static/uploads/.gitkeep
+!test_outputs/.gitkeep
 
 # Logs
 logs/
