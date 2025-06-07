@@ -2241,5 +2241,7 @@ def generate_enriched_presentation(file_id, filename, adapted_file_path, profile
 # Create a separate file html_templates.py with all the HTML templates
 
 if __name__ == "__main__":
-    # Run the Flask app
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Run the Flask app with Railway's PORT environment variable
+    port = int(os.environ.get("PORT", 5000))
+    debug_mode = os.environ.get("FLASK_ENV", "development") == "development"
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
