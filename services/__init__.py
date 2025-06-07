@@ -19,6 +19,8 @@ from .pdf_service import PDFService
 from .pptx_service import PowerPointService
 from .conversion_service import ConversionService
 from .educational_content_service import EducationalContentService
+from .session_store_service import SessionStoreService
+from .processing_task_service import ProcessingTaskService
 
 __all__ = [
     'UploadService',
@@ -34,5 +36,7 @@ __all__ = [
     'PDFService',
     'PowerPointService',
     'ConversionService',
-    'EducationalContentService'
+    'EducationalContentService',
+    'SessionStoreService',
+    'ProcessingTaskService'
 ]

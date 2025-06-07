@@ -1,5 +1,9 @@
 # Grade Level (lower is better)
 import os
+
+# Apply httpx patch before importing anthropic to fix compatibility issues
+import anthropic_patch
+
 from flask import Flask, request, send_file, render_template_string, redirect, url_for, jsonify
 import uuid
 from pptx import Presentation
@@ -10,6 +14,7 @@ import io
 import base64
 import threading
 import json
+from datetime import datetime
 
 # Handle matplotlib import gracefully
 try:
@@ -86,7 +91,8 @@ if not api_key:
     raise ValueError("ANTHROPIC_API_KEY environment variable is required")
 
 api_utils = ApiUtils(api_key)
-client = anthropic.Anthropic(api_key=api_utils.api_key)
+# Use the client from api_utils which handles version compatibility
+client = api_utils.client
 
 # Initialize PDF Migration Helper for new service-based PDF processing
 pdf_migration_helper = PDFMigrationHelper({
@@ -101,7 +107,7 @@ try:
         PDFService, PowerPointService, ConversionService, 
         EducationalContentService, LearningProfilesService, UploadService,
         DownloadsService, FileStoreService, AdaptationsService, TranslationsService,
-        AssessmentsService
+        AssessmentsService, SessionStoreService
     )
 except ImportError as e:
     print(f"Error importing services: {e}")
@@ -114,7 +120,7 @@ except ImportError as e:
     PDFService = PowerPointService = ConversionService = DummyService
     EducationalContentService = LearningProfilesService = UploadService = DummyService
     DownloadsService = FileStoreService = AdaptationsService = DummyService
-    TranslationsService = AssessmentsService = DummyService
+    TranslationsService = AssessmentsService = SessionStoreService = DummyService
 
 service_config = {
     'output_folder': app.config['OUTPUT_FOLDER'],
@@ -137,10 +143,75 @@ adaptations_service = AdaptationsService(service_config)
 translations_service = TranslationsService(service_config)
 assessments_service = AssessmentsService(service_config)
 
+# Initialize session store for Docker persistence
+# Auto-detect environment and use appropriate Redis URL
+def get_redis_url():
+    """Get Redis URL based on environment"""
+    # Check if we're in Docker (redis hostname should resolve)
+    try:
+        import socket
+        socket.gethostbyname('redis')
+        # In Docker, use the redis service name
+        return 'redis://redis:6379/0'
+    except socket.gaierror:
+        # Local development, try localhost
+        return 'redis://localhost:6379/0'
+
+session_store_config = {
+    'redis_url': os.getenv('REDIS_URL', get_redis_url()),
+    'session_ttl_hours': 24
+}
+session_store = SessionStoreService(session_store_config)
+
 # Helper function to generate output file path
 def get_output_file_path(file_id, filename):
     """Generate output file path using consistent naming"""
     return os.path.join(app.config['OUTPUT_FOLDER'], f"{file_id}_{filename}")
+
+# Helper functions to use session store with fallback to in-memory
+def store_processing_task(file_id, task_data):
+    """Store processing task in both memory and persistent storage"""
+    processing_tasks[file_id] = task_data
+    session_store.store_file_metadata(file_id, task_data)
+
+def get_processing_task(file_id):
+    """Get processing task from memory or persistent storage"""
+    # Try memory first
+    if file_id in processing_tasks:
+        return processing_tasks[file_id]
+    
+    # Try persistent storage
+    task_data = session_store.get_file_metadata(file_id)
+    if task_data:
+        # Restore to memory for fast access
+        processing_tasks[file_id] = task_data
+        return task_data
+    
+    return None
+
+def update_processing_task(file_id, updates):
+    """Update processing task in both memory and persistent storage"""
+    if file_id in processing_tasks:
+        processing_tasks[file_id].update(updates)
+    session_store.update_file_metadata(file_id, updates)
+
+def task_exists(file_id):
+    """Check if task exists in memory or persistent storage"""
+    return file_id in processing_tasks or session_store.file_exists(file_id)
+
+
+# Global progress update function for services
+def update_service_progress(file_id, message, percentage):
+    """Update progress from service functions"""
+    update_processing_task(file_id, {
+        'message': message,
+        'progress': {
+            'total': 100,
+            'processed': percentage,
+            'percentage': percentage
+        }
+    })
+    print(f"Progress update: {file_id} - {percentage}% - {message}")
 
 # Helper function to register a file that was created externally
 def register_output_file(file_id, filename, file_path):
@@ -289,13 +360,13 @@ def upload():
         file_ext = f".{upload_result['file_type']}"
         
         # Initialize processing task
-        processing_tasks[file_id] = {
+        store_processing_task(file_id, {
             'status': 'upload', 
             'filename': filename, 
             'profile': profile,
             'file_type': file_ext,
             'metadata': metadata
-        }
+        })
         
         # Route based on action
         if action == 'assess':
@@ -307,7 +378,7 @@ def upload():
         
         else:  # action == 'adapt'
             # Start adaptation process
-            processing_tasks[file_id].update({
+            update_processing_task(file_id, {
                 'status': 'processing', 
                 'message': 'Starting adaptation...',
                 'export_format': export_format,
@@ -333,44 +404,48 @@ def upload():
                             # Determine which translation method to use based on mode
                             if translation_mode == 'replace':
                                 print(f"Using replace mode translation to {target_language}")
-                                processing_tasks[file_id]['message'] = f'Translating content to {target_language} (replace mode)...'
-                                processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 5, 'percentage': 5}
+                                update_processing_task(file_id, {'message': f'Translating content to {target_language} (replace mode)...'})
+                                update_processing_task(file_id, {'progress': {'total': 100, 'processed': 5, 'percentage': 5}})
                                 
                                 # Use in-place translation (replaces original content)
                                 result = pptx_service.translate_presentation_in_place(
-                                    file_path, file_id, filename, target_language, processing_tasks[file_id]
+                                    file_path, file_id, filename, target_language
                                 )
                             else:  # copy mode (default)
                                 print(f"Using copy mode translation to {target_language}")
-                                processing_tasks[file_id]['message'] = f'Creating translated copies for {target_language}...'
-                                processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 5, 'percentage': 5}
+                                update_processing_task(file_id, {'message': f'Creating translated copies for {target_language}...'})
+                                update_processing_task(file_id, {'progress': {'total': 100, 'processed': 5, 'percentage': 5}})
                                 
                                 # Use slide duplication method (keeps originals + adds translations)
                                 result = pptx_service.translate_presentation(
-                                    file_path, file_id, filename, target_language, processing_tasks[file_id]
+                                    file_path, file_id, filename, target_language
                                 )
                         else:
                             # Use the standard adaptation method (with optional translation)
                             print(f"Using standard adaptation method for profile: {profile}")
                             result = pptx_service.process_presentation_efficiently(
-                                file_path, file_id, filename, profile, target_language, processing_tasks
+                                file_path, file_id, filename, profile, target_language,
+                                progress_callback=lambda msg, pct: update_processing_task(file_id, {
+                                    'message': msg,
+                                    'progress': {'total': 100, 'processed': pct, 'percentage': pct}
+                                })
                             )
                         
                         if result:
-                            processing_tasks[file_id]['adapted_path'] = result
-                            processing_tasks[file_id]['status'] = 'completed'
+                            update_processing_task(file_id, {'adapted_path': result})
+                            update_processing_task(file_id, {'status': 'completed'})
                             print(f"DEBUG: Processing completed successfully for {file_id}")
                         else:
-                            processing_tasks[file_id]['status'] = 'error'
-                            processing_tasks[file_id]['message'] = 'Processing returned no result'
+                            update_processing_task(file_id, {'status': 'error'})
+                            update_processing_task(file_id, {'message': 'Processing returned no result'})
                             print(f"DEBUG: Processing failed - no result returned for {file_id}")
                             
                     except Exception as e:
                         print(f"ERROR in PowerPoint processing: {str(e)}")
                         import traceback
                         traceback.print_exc()
-                        processing_tasks[file_id]['status'] = 'error'
-                        processing_tasks[file_id]['message'] = f'Processing error: {str(e)}'
+                        update_processing_task(file_id, {'status': 'error'})
+                        update_processing_task(file_id, {'message': f'Processing error: {str(e)}'})
                 
                 thread_target = pptx_thread_target
                 thread_args = ()
@@ -416,12 +491,12 @@ def process_pdf_with_services(file_path, file_id, filename, profile, export_form
     print(f"Starting service-based PDF processing for {filename} with profile: {profile}")
     
     try:
-        processing_tasks[file_id]['message'] = 'Initializing PDF processing services...'
-        processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 5, 'percentage': 5}
+        update_processing_task(file_id, {'message': 'Initializing PDF processing services...'})
+        update_processing_task(file_id, {'progress': {'total': 100, 'processed': 5, 'percentage': 5}})
         
         # Use the migration helper to process the PDF
-        processing_tasks[file_id]['message'] = 'Processing PDF with visual preservation...'
-        processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 20, 'percentage': 20}
+        update_processing_task(file_id, {'message': 'Processing PDF with visual preservation...'})
+        update_processing_task(file_id, {'progress': {'total': 100, 'processed': 20, 'percentage': 20}})
         
         # Process with services - this handles adaptation and visual preservation
         result = pdf_migration_helper.process_with_pdf_template_system(
@@ -433,39 +508,39 @@ def process_pdf_with_services(file_path, file_id, filename, profile, export_form
             target_language=target_language
         )
         
-        processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 60, 'percentage': 60}
+        update_processing_task(file_id, {'progress': {'total': 100, 'processed': 60, 'percentage': 60}})
         
         if not result['success']:
             raise Exception(f"PDF processing failed: {result.get('error', 'Unknown error')}")
         
         # Update processing status
-        processing_tasks[file_id]['message'] = 'PDF adaptation completed successfully!'
-        processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 90, 'percentage': 90}
+        update_processing_task(file_id, {'message': 'PDF adaptation completed successfully!'})
+        update_processing_task(file_id, {'progress': {'total': 100, 'processed': 90, 'percentage': 90}})
         
         # Store the output path for downloads
         output_path = result['output_path']
-        processing_tasks[file_id]['output_path'] = output_path
-        processing_tasks[file_id]['adapted_content'] = result.get('adapted_content', {})
+        update_processing_task(file_id, {'output_path': output_path})
+        update_processing_task(file_id, {'adapted_content': result.get('adapted_content', {})})
         
         # Handle translation if requested and available
         if target_language and target_language.strip():
-            processing_tasks[file_id]['message'] = f'Creating translation in {target_language}...'
-            processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 95, 'percentage': 95}
+            update_processing_task(file_id, {'message': f'Creating translation in {target_language}...'})
+            update_processing_task(file_id, {'progress': {'total': 100, 'processed': 95, 'percentage': 95}})
             
             # Check if translation was successful
             if 'translated_output_path' in result:
-                processing_tasks[file_id]['translated_output_path'] = result['translated_output_path']
-                processing_tasks[file_id]['translated_language'] = result['translated_language']
-                processing_tasks[file_id]['translation_languages'] = [target_language]
+                update_processing_task(file_id, {'translated_output_path': result['translated_output_path']})
+                update_processing_task(file_id, {'translated_language': result['translated_language']})
+                update_processing_task(file_id, {'translation_languages': [target_language]})
                 print(f"✓ Translation completed: {result['translated_output_path']}")
             else:
                 print(f"⚠ Translation was requested but failed for {target_language}")
-                processing_tasks[file_id]['translation_error'] = f'Translation to {target_language} failed'
+                update_processing_task(file_id, {'translation_error': f'Translation to {target_language} failed'})
         
         # Mark as completed
-        processing_tasks[file_id]['status'] = 'completed'
-        processing_tasks[file_id]['message'] = 'Processing completed successfully!'
-        processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 100, 'percentage': 100}
+        update_processing_task(file_id, {'status': 'completed'})
+        update_processing_task(file_id, {'message': 'Processing completed successfully!'})
+        update_processing_task(file_id, {'progress': {'total': 100, 'processed': 100, 'percentage': 100}})
         
         print(f"✓ Service-based PDF processing completed successfully for {filename}")
         return True
@@ -476,32 +551,29 @@ def process_pdf_with_services(file_path, file_id, filename, profile, export_form
         traceback.print_exc()
         
         # Update task with error
-        processing_tasks[file_id]['status'] = 'error'
-        processing_tasks[file_id]['message'] = f'Error: {str(e)}'
-        processing_tasks[file_id]['error'] = str(e)
-        
+        update_processing_task(file_id, {'status': 'error'})
+        update_processing_task(file_id, {'message': f'Error: {str(e)}'})
+        update_processing_task(file_id, {'error': str(e)})
         return False
 
 # Original PDF processing function (kept for fallback)
 def update_processing_status(file_id, message, percentage):
     """Helper function to update processing status"""
     if percentage < 0:  # Error state
-        processing_tasks[file_id] = {
+        store_processing_task(file_id, {
             'status': 'error',
             'message': message
-        }
+        })
     else:
-        if file_id not in processing_tasks:
+        if not task_exists(file_id):
             processing_tasks[file_id] = {}
-        processing_tasks[file_id]['message'] = message
-        processing_tasks[file_id]['progress'] = {
-            'total': 100,
+        update_processing_task(file_id, {'message': message})
+        update_processing_task(file_id, {'progress': {'total': 100,
             'processed': percentage,
             'percentage': percentage
-        }
+        }})
         if percentage >= 100:
-            processing_tasks[file_id]['status'] = 'complete'
-
+            update_processing_task(file_id, {'status': 'complete'})
 def process_with_pdf_template_system(file_path, file_id, filename, profile, export_format='pdf', target_language=None):
     """Main PDF processing function - delegates to pdf_service"""
     # Use the pdf_service's comprehensive processing method
@@ -548,7 +620,7 @@ def process_with_pdf_template_system(file_path, file_id, filename, profile, expo
                 status_data['translated_filename'] = translated_filename
                 status_data['message'] += f' and translated to {target_language}'
         
-        processing_tasks[file_id] = status_data
+        store_processing_task(file_id, status_data)
         register_output_file(file_id, os.path.basename(output_path), output_path)
         
     return output_path
@@ -603,10 +675,10 @@ def create_pptx_from_pdf_content(adapted_content, output_path, profile):
 def convert_to_pdf(file_id):
     """Convert an uploaded PPTX to PDF template"""
     try:
-        if file_id not in processing_tasks:
+        if not task_exists(file_id):
             return jsonify({'error': 'File not found'}), 404
         
-        filename = processing_tasks[file_id].get('filename', '')
+        filename = get_processing_task(file_id).get('filename', '')
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
         
         if not os.path.exists(file_path):
@@ -619,7 +691,7 @@ def convert_to_pdf(file_id):
         success = conversion_service.convert_pptx_to_pdf_template(file_path, pdf_path)
         
         if success:
-            processing_tasks[file_id]['pdf_template'] = pdf_path
+            update_processing_task(file_id, {'pdf_template': pdf_path})
             return jsonify({
                 'status': 'success',
                 'pdf_path': pdf_path,
@@ -630,6 +702,18 @@ def convert_to_pdf(file_id):
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint for Docker"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'services': {
+            'redis': session_store.redis_available,
+            'api': api_utils.check_connection()['status'] == 'connected'
+        }
+    })
 
 @app.route('/check_api')
 def check_api():
@@ -650,7 +734,7 @@ def download(file_id, filename):
     """Universal download page for both PDF and PPTX adaptations - uses downloads_service"""
     try:
         # Get download page info from service
-        download_info = downloads_service.get_download_page_info(file_id, filename, processing_tasks)
+        download_info = downloads_service.get_download_page_info(file_id, filename, get_processing_task(file_id))
         
         # Get profile display names
         profile_names = get_profile_names()
@@ -693,7 +777,7 @@ def download_file(file_id, filename):
         print(f"Download request: file_id={file_id}, filename={filename}")
         
         # Use downloads service to find and prepare the file
-        result = downloads_service.get_file_for_download(file_id, filename, processing_tasks)
+        result = downloads_service.get_file_for_download(file_id, filename, get_processing_task(file_id))
         
         if result:
             file_path, clean_filename = result
@@ -716,7 +800,7 @@ def debug_files(file_id):
     """Debug route to check file status and locations"""
     try:
         # Get task info
-        task_info = processing_tasks.get(file_id, {})
+        task_info = get_processing_task(file_id, {})
         
         # List all files in output folder
         output_files = []
@@ -735,7 +819,7 @@ def debug_files(file_id):
             'output_folder': app.config['OUTPUT_FOLDER'],
             'all_output_files_count': len(output_files),
             'matching_files': matching_files,
-            'processing_tasks_keys': list(processing_tasks.keys())
+            'processing_tasks_keys': session_store.list_all_files() if 'session_store' in globals() else []
         }
         
         return jsonify(debug_info)
@@ -748,14 +832,14 @@ def analyze_framework(file_id):
     """Analyze a presentation's instructional framework"""
     try:
         # Validate if file_id exists
-        if file_id not in processing_tasks:
+        if not task_exists(file_id):
             return jsonify({
                 "status": "error",
                 "message": "Presentation not found. Please upload again."
             }), 404
         
         # Get original filename
-        filename = processing_tasks[file_id].get('filename', '')
+        filename = get_processing_task(file_id).get('filename', '')
         
         # Use the same naming pattern as in your upload function
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
@@ -767,15 +851,15 @@ def analyze_framework(file_id):
             }), 404
             
         # Update processing status
-        processing_tasks[file_id]['status'] = 'analyzing_framework'
-        processing_tasks[file_id]['message'] = 'Analyzing instructional framework...'
+        update_processing_task(file_id, {'status': 'analyzing_framework'})
+        update_processing_task(file_id, {'message': 'Analyzing instructional framework...'})
         
         # Analyze framework
         framework_data = analyze_instructional_framework(file_path)
         
         # Store the framework data
-        processing_tasks[file_id]['framework'] = framework_data
-        processing_tasks[file_id]['status'] = 'complete'
+        update_processing_task(file_id, {'framework': framework_data})
+        update_processing_task(file_id, {'status': 'complete'})
         
         # Create a template to display the results
         return render_template_string(
@@ -803,14 +887,15 @@ def analyze_scaffolding(file_id):
         target_language = request.args.get('target_language', '')
         
         # Validate if file_id exists
-        if file_id not in processing_tasks:
+        task_data = get_processing_task(file_id)
+        if not task_data:
             return jsonify({
                 "status": "error",
                 "message": "Presentation not found. Please upload again."
             }), 404
         
         # Get original filename
-        filename = processing_tasks[file_id].get('filename', '')
+        filename = task_data.get('filename', '')
         
         # Use the same naming pattern as in your upload function
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
@@ -825,7 +910,7 @@ def analyze_scaffolding(file_id):
             }), 404
             
         # Check file type - now supports both PDF and PowerPoint
-        file_type = processing_tasks[file_id].get('file_type', '').lower()
+        file_type = task_data.get('file_type', '').lower()
         
         # Both PDF and PowerPoint files are now supported for analysis
         if file_type not in ['.pdf', '.pptx']:
@@ -835,15 +920,19 @@ def analyze_scaffolding(file_id):
             }), 400
         
         # Update processing status
-        processing_tasks[file_id]['status'] = 'analyzing'
-        file_type_name = "PDF" if file_type == '.pdf' else "PowerPoint"
-        processing_tasks[file_id]['message'] = f'Analyzing {file_type_name} for learning scaffolding elements...'
+        update_processing_task(file_id, {
+            'status': 'analyzing',
+            'message': f'Analyzing {"PDF" if file_type == ".pdf" else "PowerPoint"} for learning scaffolding elements...'
+        })
         
         # Store profile information for potential use
+        updates = {}
         if profile:
-            processing_tasks[file_id]['profile'] = profile
+            updates['profile'] = profile
         if target_language:
-            processing_tasks[file_id]['target_language'] = target_language
+            updates['target_language'] = target_language
+        if updates:
+            update_processing_task(file_id, updates)
         
         # Extract scaffolding elements with profile assessment
         scaffolding_data = educational_service.extract_learning_scaffolding(file_path, profile)
@@ -854,8 +943,8 @@ def analyze_scaffolding(file_id):
                 # Check for authentication errors specifically
                 if 'authentication_error' in str(error_msg) or 'invalid x-api-key' in str(error_msg):
                     # Store a user-friendly error message
-                    processing_tasks[file_id]['status'] = 'error'
-                    processing_tasks[file_id]['message'] = 'API authentication failed. Please check the API key configuration.'
+                    update_processing_task(file_id, {'status': 'error'})
+                    update_processing_task(file_id, {'message': 'API authentication failed. Please check the API key configuration.'})
                     return jsonify({
                         "status": "error",
                         "message": "API authentication failed. Please check the API key configuration."
@@ -881,9 +970,11 @@ def analyze_scaffolding(file_id):
                 print(f"DEBUG: Found {len(elements.get('assessment_items', []))} assessment items")
         
         # Store the scaffolding data in the processing task
-        processing_tasks[file_id]['scaffolding'] = scaffolding_data
-        processing_tasks[file_id]['status'] = 'complete'
-        processing_tasks[file_id]['message'] = 'Scaffolding analysis complete'
+        update_processing_task(file_id, {
+            'scaffolding': scaffolding_data,
+            'status': 'complete',
+            'message': 'Scaffolding analysis complete'
+        })
         
         print(f"DEBUG: Redirecting to view_presentation_scaffolding for {file_id}")
         # Redirect to the scaffolding results page
@@ -893,9 +984,9 @@ def analyze_scaffolding(file_id):
         traceback.print_exc()
         
         # Update status to error
-        if file_id in processing_tasks:
-            processing_tasks[file_id]['status'] = 'error'
-            processing_tasks[file_id]['message'] = f"Error analyzing scaffolding: {str(e)}"
+        if task_exists(file_id):
+            update_processing_task(file_id, {'status': 'error'})
+            update_processing_task(file_id, {'message': f"Error analyzing scaffolding: {str(e)}"})
         
         return jsonify({
             "status": "error",
@@ -906,21 +997,21 @@ def analyze_scaffolding(file_id):
 def view_presentation_scaffolding(file_id):
     """Show the scaffolding analysis results"""
     print(f"DEBUG: view_scaffolding called for file_id: {file_id}")
-    print(f"DEBUG: processing_tasks keys: {list(processing_tasks.keys())}")
+    print(f"DEBUG: task keys: {session_store.list_all_files() if 'session_store' in globals() else []}")
     
-    if file_id not in processing_tasks:
-        print(f"DEBUG: file_id {file_id} not found in processing_tasks")
+    if not task_exists(file_id):
+        print(f"DEBUG: file_id {file_id} not found in task store")
         return render_template_string(ERROR_TEMPLATE, 
                                      message="Presentation not found. Please upload again.")
                                      
-    print(f"DEBUG: processing_tasks[{file_id}] keys: {list(processing_tasks[file_id].keys())}")
+    print(f"DEBUG: get_processing_task({file_id}) keys: {list(get_processing_task(file_id).keys())}")
     
-    if 'scaffolding' not in processing_tasks[file_id]:
-        print(f"DEBUG: 'scaffolding' key not found in processing_tasks[{file_id}]")
+    if 'scaffolding' not in get_processing_task(file_id):
+        print(f"DEBUG: 'scaffolding' key not found in get_processing_task({file_id})")
         return render_template_string(ERROR_TEMPLATE, 
                                      message="Scaffolding analysis not found. Please analyze the presentation first.")
     
-    scaffolding_data = processing_tasks[file_id]['scaffolding']
+    scaffolding_data = get_processing_task(file_id)['scaffolding']
     print(f"DEBUG: scaffolding_data type: {type(scaffolding_data)}")
     
     if isinstance(scaffolding_data, dict):
@@ -933,7 +1024,7 @@ def view_presentation_scaffolding(file_id):
     profile_assessment = scaffolding_data.get('profile_assessment', {}) if isinstance(scaffolding_data, dict) else {}
     
     # Get file type for proper adaptation routing
-    file_type = processing_tasks[file_id].get('file_type', '').lower()
+    file_type = get_processing_task(file_id).get('file_type', '').lower()
     
     return render_template_string(
         SCAFFOLDING_TEMPLATE,
@@ -950,14 +1041,15 @@ def assess_content(file_id):
     """Assess content quality and provide recommendations"""
     try:
         # Validate if file_id exists
-        if file_id not in processing_tasks:
+        task_data = get_processing_task(file_id)
+        if not task_data:
             return jsonify({
                 "status": "error",
                 "message": "File not found. Please upload again."
             }), 404
         
         # Get file information
-        filename = processing_tasks[file_id].get('filename', '')
+        filename = task_data.get('filename', '')
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
         
         if not os.path.exists(file_path):
@@ -970,7 +1062,7 @@ def assess_content(file_id):
         profile = request.args.get('profile', 'default')
         
         # Extract content based on file type
-        file_type = processing_tasks[file_id].get('file_type', '').lower()
+        file_type = task_data.get('file_type', '').lower()
         
         if file_type == '.pdf':
             content = pdf_service.extract_content_from_pdf(file_path)
@@ -986,7 +1078,7 @@ def assess_content(file_id):
         assessment_result = assessments_service.assess_content(content, profile)
         
         # Store assessment results
-        processing_tasks[file_id]['assessment'] = assessment_result
+        update_processing_task(file_id, {'assessment': assessment_result})
         
         return jsonify({
             "status": "success",
@@ -994,29 +1086,46 @@ def assess_content(file_id):
         })
         
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"Error in assess_content route: {str(e)}")
+        print(f"Full traceback:\n{error_trace}")
+        
+        # Log more details about the error
+        error_details = {
+            "error_type": type(e).__name__,
+            "error_message": str(e),
+            "file_id": file_id,
+            "file_exists": os.path.exists(file_path) if 'file_path' in locals() else "Unknown",
+            "profile": profile if 'profile' in locals() else "Unknown"
+        }
+        print(f"Error details: {json.dumps(error_details, indent=2)}")
+        
         return jsonify({
             "status": "error",
-            "message": f"Error assessing content: {str(e)}"
+            "message": f"Error assessing content: {str(e)}",
+            "error_type": type(e).__name__
         }), 500
 
 @app.route('/content_recommendations/<file_id>')
 def content_recommendations(file_id):
     """Get content improvement recommendations"""
     try:
-        if file_id not in processing_tasks:
+        task_data = get_processing_task(file_id)
+        if not task_data:
             return jsonify({
                 "status": "error",
                 "message": "File not found"
             }), 404
         
         # Check if assessment exists
-        if 'assessment' not in processing_tasks[file_id]:
+        if 'assessment' not in task_data:
             return jsonify({
                 "status": "error",
                 "message": "No assessment found. Please assess content first."
             }), 400
         
-        assessment = processing_tasks[file_id]['assessment']
+        assessment = task_data['assessment']
         recommendations = assessment.get('recommendations', [])
         
         return jsonify({
@@ -1071,7 +1180,7 @@ def advanced_pdf_processing(file_id):
     """Process PDF with advanced visual preservation features"""
     try:
         # Validate file exists
-        if file_id not in processing_tasks:
+        if not task_exists(file_id):
             return jsonify({
                 "status": "error",
                 "message": "File not found"
@@ -1084,7 +1193,7 @@ def advanced_pdf_processing(file_id):
         add_reading_guides = request.args.get('guides', 'false').lower() == 'true'
         
         # Get file information
-        filename = processing_tasks[file_id].get('filename', '')
+        filename = get_processing_task(file_id).get('filename', '')
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
         
         if not os.path.exists(file_path):
@@ -1192,14 +1301,14 @@ def test_adaptation(profile):
 def pdf_accessibility(file_id):
     """Optimize PDF for screen reader accessibility"""
     try:
-        if file_id not in processing_tasks:
+        if not task_exists(file_id):
             return jsonify({
                 "status": "error",
                 "message": "File not found"
             }), 404
         
         # Get file information
-        filename = processing_tasks[file_id].get('filename', '')
+        filename = get_processing_task(file_id).get('filename', '')
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{file_id}_{filename}")
         
         if not os.path.exists(file_path):
@@ -1236,20 +1345,17 @@ def pdf_accessibility(file_id):
 
 def update_task_status(file_id, status, message=None, progress=None, **kwargs):
     """Helper function to update task status consistently"""
-    if file_id not in processing_tasks:
+    if not task_exists(file_id):
         processing_tasks[file_id] = {}
     
-    processing_tasks[file_id]['status'] = status
-    
+    update_processing_task(file_id, {'status': status})
     if message is not None:
-        processing_tasks[file_id]['message'] = message
-    
+        update_processing_task(file_id, {'message': message})
     if progress is not None:
-        processing_tasks[file_id]['progress'] = progress
-    
+        update_processing_task(file_id, {'progress': progress})
     # Add any additional fields
     for key, value in kwargs.items():
-        processing_tasks[file_id][key] = value
+        update_processing_task(file_id, {key: value})
     
     # Debug logging
     print(f"Status update for {file_id}: {status} - {message}")
@@ -1267,11 +1373,8 @@ def update_task_progress(file_id, processed, total, message=None):
     if message:
         update_task_status(file_id, 'processing', message, progress)
     else:
-        if file_id in processing_tasks:
-            processing_tasks[file_id]['progress'] = progress
-
-
-
+        if task_exists(file_id):
+            update_processing_task(file_id, {'progress': progress})
 ## Text Processing Functions
 # Batch processing has been moved to AdaptationsService
 
@@ -1280,13 +1383,13 @@ def update_task_progress(file_id, processed, total, message=None):
 def status(file_id):
     """Check the status of a processing task"""
     try:
-        if file_id not in processing_tasks:
+        if not task_exists(file_id):
             return jsonify({
                 'status': 'not_found',
                 'message': 'Task not found'
             }), 404
         
-        task = processing_tasks[file_id]
+        task = get_processing_task(file_id)
         
         # Return the task status as JSON
         response_data = {
@@ -1721,12 +1824,12 @@ def adapt(file_id, profile):
                                          message=f"Claude API connection error: {api_status['message']}"), 400
         
         # Validate if file_id exists in our system
-        if file_id not in processing_tasks:
+        if not task_exists(file_id):
             return render_template_string(ERROR_TEMPLATE, 
                                          message="Presentation not found. Please upload again."), 404
         
         # Set initial processing status with empty progress
-        processing_tasks[file_id] = {
+        store_processing_task(file_id, {
             'status': 'processing', 
             'message': 'Starting adaptation...',
             'progress': {
@@ -1734,10 +1837,10 @@ def adapt(file_id, profile):
                 'processed': 0,
                 'percentage': 0
             }
-        }
+        })
         
         # Get the original filename from the processing tasks
-        filename = processing_tasks[file_id].get('filename', 'presentation.pptx')
+        filename = get_processing_task(file_id).get('filename', 'presentation.pptx')
         
         # IMPORTANT FIX: Use the correct file path pattern
         # Look for files in the format "file_id_filename.pptx"
@@ -1760,45 +1863,52 @@ def adapt(file_id, profile):
             print(f"File not found. Looking for file with ID: {file_id}")
             print(f"Files in upload folder: {os.listdir(app.config['UPLOAD_FOLDER'])}")
             
-            processing_tasks[file_id] = {'status': 'error', 'message': 'Presentation file not found on server'}
+            store_processing_task(file_id, {'status': 'error', 'message': 'Presentation file not found on server'})
             return redirect(url_for('error', message="File not found on server"))
         
         # Validate profile type
         valid_profiles = ['dyslexia', 'esl', 'adhd', 'visual', 'cognitive']
         if profile not in valid_profiles:
-            processing_tasks[file_id] = {'status': 'error', 'message': f'Invalid profile: {profile}'}
+            store_processing_task(file_id, {'status': 'error', 'message': f'Invalid profile: {profile}'})
             return redirect(url_for('error', message=f"Invalid profile: {profile}"))
         
         # Start processing in a background thread to avoid blocking
         def process_task():
             try:
                 # Get target language from processing tasks metadata
-                target_language = processing_tasks[file_id].get('metadata', {}).get('target_language')
+                target_language = get_processing_task(file_id).get('metadata', {}).get('target_language')
                 
                 # Check file type and use appropriate service
-                file_type = processing_tasks[file_id].get('file_type', '').lower()
+                file_type = get_processing_task(file_id).get('file_type', '').lower()
                 print(f"DEBUG: Adaptation - file_type detected: '{file_type}' for file_id: {file_id}")
-                print(f"DEBUG: Adaptation - processing_tasks[{file_id}]: {processing_tasks[file_id]}")
+                print(f"DEBUG: Adaptation - get_processing_task({file_id}): {get_processing_task(file_id)}")
                 
                 if file_type == '.pdf':
                     # Use PDF service for adaptation
                     result = pdf_service.process_with_template_system(
                         file_path, file_id, filename, profile, 'pdf', target_language,
-                        lambda fid, msg, prog: update_task_progress(fid, prog, 100, msg),
+                        lambda fid, msg, prog: update_processing_task(fid, {
+                            'message': msg,
+                            'progress': {'total': 100, 'processed': prog, 'percentage': prog}
+                        }),
                         lambda fid, name: os.path.join(app.config['OUTPUT_FOLDER'], f"{fid}_{name}")
                     )
                 else:
                     # Use PowerPoint service for .pptx files
                     result = pptx_service.process_presentation_efficiently(
-                        file_path, file_id, filename, profile, target_language, processing_tasks
+                        file_path, file_id, filename, profile, target_language,
+                        progress_callback=lambda msg, pct: update_processing_task(file_id, {
+                            'message': msg,
+                            'progress': {'total': 100, 'processed': pct, 'percentage': pct}
+                        })
                     )
                 
                 if result:
-                    processing_tasks[file_id]['adapted_path'] = result
+                    update_processing_task(file_id, {'adapted_path': result})
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                processing_tasks[file_id] = {'status': 'error', 'message': str(e)}
+                store_processing_task(file_id, {'status': 'error', 'message': str(e)})
         
         # Start the processing thread with a name containing the file_id
         processing_thread = threading.Thread(
@@ -1847,7 +1957,7 @@ def generate_presentation():
         file_id = str(uuid.uuid4())
         
         # Set initial status
-        processing_tasks[file_id] = {'status': 'processing', 'message': ''}
+        store_processing_task(file_id, {'status': 'processing', 'message': ''})
         
         # Create a sanitized filename
         sanitized_topic = re.sub(r'[^\w\s-]', '', lesson_topic).strip().lower()
@@ -1906,7 +2016,7 @@ def enrich_and_generate():
         file_id = str(uuid.uuid4())
         
         # Set initial status
-        processing_tasks[file_id] = {'status': 'processing', 'message': ''}
+        store_processing_task(file_id, {'status': 'processing', 'message': ''})
         
         # Create a sanitized filename for the new presentation
         sanitized_topic = re.sub(r'[^\w\s-]', '', lesson_topic).strip().lower()
@@ -2009,7 +2119,7 @@ def generate_new_presentation(file_id, filename, profile, topic, grade_level, sl
         prs.save(output_path)
         
         # Update status to complete
-        processing_tasks[file_id] = {'status': 'complete', 'message': ''}
+        store_processing_task(file_id, {'status': 'complete', 'message': ''})
         
         return output_path
         
@@ -2018,12 +2128,12 @@ def generate_new_presentation(file_id, filename, profile, topic, grade_level, sl
         traceback.print_exc()
         
         # Update status to error
-        processing_tasks[file_id] = {'status': 'error', 'message': str(e)}
+        store_processing_task(file_id, {'status': 'error', 'message': str(e)})
 
 def process_presentation_with_pdf(file_path, file_id, filename, profile, target_language=None):
     """Modified presentation processing function that also generates PDF"""
     # First do the normal PowerPoint adaptation
-    output_path = pptx_service.process_presentation_efficiently(file_path, file_id, filename, profile, target_language, processing_tasks)
+    output_path = pptx_service.process_presentation_efficiently(file_path, file_id, filename, profile, target_language)
     
     # Also generate PDF version
     if output_path:
@@ -2036,15 +2146,13 @@ def process_presentation_with_pdf(file_path, file_id, filename, profile, target_
             
             # Update processing task with PDF info
             if pdf_success and os.path.exists(pdf_path):
-                processing_tasks[file_id]['has_pdf'] = True
-                processing_tasks[file_id]['pdf_filename'] = pdf_filename
+                update_processing_task(file_id, {'has_pdf': True})
+                update_processing_task(file_id, {'pdf_filename': pdf_filename})
             else:
-                processing_tasks[file_id]['has_pdf'] = False
-                
+                update_processing_task(file_id, {'has_pdf': False})
         except Exception as e:
             print(f"Error generating PDF: {str(e)}")
-            processing_tasks[file_id]['has_pdf'] = False
-    
+            update_processing_task(file_id, {'has_pdf': False})
     return output_path
 
 def generate_enriched_presentation(file_id, filename, adapted_file_path, profile, topic, grade_level, slide_count, include_images, extra_notes, subject_area):
@@ -2118,7 +2226,7 @@ def generate_enriched_presentation(file_id, filename, adapted_file_path, profile
         prs.save(output_path)
         
         # Update status to complete
-        processing_tasks[file_id] = {'status': 'complete', 'message': ''}
+        store_processing_task(file_id, {'status': 'complete', 'message': ''})
         
         return output_path
         
@@ -2127,7 +2235,7 @@ def generate_enriched_presentation(file_id, filename, adapted_file_path, profile
         traceback.print_exc()
         
         # Update status to error
-        processing_tasks[file_id] = {'status': 'error', 'message': str(e)}
+        store_processing_task(file_id, {'status': 'error', 'message': str(e)})
 
 # HTML templates module
 # Create a separate file html_templates.py with all the HTML templates

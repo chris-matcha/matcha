@@ -683,7 +683,7 @@ class PowerPointService(BaseService):
                     self._format_text_frame(shape.text_frame, settings)
     
     def translate_presentation(self, file_path: str, file_id: str, filename: str,
-                              target_language: str, processing_tasks: Optional[Dict] = None) -> Optional[str]:
+                              target_language: str, progress_callback: Optional[callable] = None) -> Optional[str]:
         """
         Translate a presentation preserving original slides and creating translated copies
         
@@ -695,7 +695,7 @@ class PowerPointService(BaseService):
             file_id: Unique file identifier
             filename: Original filename
             target_language: Target language for translation (required)
-            processing_tasks: Optional processing tasks dict for status updates
+            progress_callback: Optional callback function for progress updates (message, percentage)
             
         Returns:
             Output path or None on error
@@ -710,12 +710,12 @@ class PowerPointService(BaseService):
             file_id=file_id,
             filename=filename,
             target_language=target_language,
-            processing_tasks=processing_tasks
+            progress_callback=progress_callback
         )
     
     def process_presentation_efficiently(self, file_path: str, file_id: str, filename: str, 
                                        profile: str, target_language: Optional[str] = None,
-                                       processing_tasks: Optional[Dict] = None) -> Optional[str]:
+                                       progress_callback: Optional[callable] = None) -> Optional[str]:
         """
         Process presentation efficiently with adaptations and optional translation
         NOW USES FORMAT-PRESERVING APPROACH - preserves all original formatting, layouts, images, animations, etc.
@@ -726,7 +726,7 @@ class PowerPointService(BaseService):
             filename: Original filename
             profile: Learning profile
             target_language: Optional target language for translation
-            processing_tasks: Optional processing tasks dict for status updates
+            progress_callback: Optional callback function for progress updates (message, percentage)
             
         Returns:
             Output path or None on error
@@ -735,10 +735,8 @@ class PowerPointService(BaseService):
             self.logger.info(f"Starting format-preserving PowerPoint processing for {filename} with profile: {profile}")
             
             # Update status
-            if processing_tasks and file_id in processing_tasks:
-                processing_tasks[file_id]['status'] = 'processing'
-                processing_tasks[file_id]['message'] = 'Starting format-preserving PowerPoint adaptation...'
-                processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 5, 'percentage': 5}
+            if progress_callback:
+                progress_callback('Starting format-preserving PowerPoint adaptation...', 5)
             
             # Generate output path
             output_filename = f"adapted_{filename}"
@@ -746,17 +744,12 @@ class PowerPointService(BaseService):
             os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, f"{file_id}_{output_filename}")
             
-            # Create enhanced callback for progress updates
-            def progress_callback(message, progress):
-                if processing_tasks and file_id in processing_tasks:
+            # Create internal callback for progress updates
+            def internal_progress_callback(message, progress):
+                if progress_callback:
                     # Ensure progress is capped at 100
                     capped_progress = min(progress, 100)
-                    processing_tasks[file_id]['message'] = message
-                    processing_tasks[file_id]['progress'] = {
-                        'total': 100, 
-                        'processed': capped_progress, 
-                        'percentage': capped_progress
-                    }
+                    progress_callback(message, capped_progress)
                     # Also log progress for debugging
                     self.logger.info(f"Progress {capped_progress:.1f}%: {message}")
             
@@ -766,30 +759,26 @@ class PowerPointService(BaseService):
                 output_path, 
                 profile, 
                 target_language, 
-                progress_callback
+                internal_progress_callback
             )
             
             if success:
                 self.logger.info(f"Successfully created format-preserving adapted presentation: {output_path}")
-                if processing_tasks and file_id in processing_tasks:
-                    processing_tasks[file_id]['status'] = 'complete'
-                    processing_tasks[file_id]['message'] = 'Format-preserving PowerPoint adaptation completed successfully!'
-                    processing_tasks[file_id]['progress'] = {'total': 100, 'processed': 100, 'percentage': 100}
+                if progress_callback:
+                    progress_callback('Format-preserving PowerPoint adaptation completed successfully!', 100)
                 return output_path
             else:
                 self.logger.error("Failed to create format-preserving adapted presentation")
-                if processing_tasks and file_id in processing_tasks:
-                    processing_tasks[file_id]['status'] = 'error'
-                    processing_tasks[file_id]['message'] = 'Failed to create format-preserving adapted presentation'
+                if progress_callback:
+                    progress_callback('Failed to create format-preserving adapted presentation', 100)
                 return None
                 
         except Exception as e:
             self.logger.error(f"Error in format-preserving presentation processing: {str(e)}")
             import traceback
             traceback.print_exc()
-            if processing_tasks and file_id in processing_tasks:
-                processing_tasks[file_id]['status'] = 'error'
-                processing_tasks[file_id]['message'] = f'Error: {str(e)}'
+            if progress_callback:
+                progress_callback(f'Error: {str(e)}', 100)
             return None
     
     def _adapt_pptx_content(self, content: Dict[str, Any], profile: str) -> Dict[str, Any]:
@@ -3268,7 +3257,7 @@ Format as JSON with structure:
             pass
     
     def _create_translation_presentation(self, file_path: str, file_id: str, filename: str,
-                                       target_language: str, processing_tasks: Optional[Dict] = None) -> Optional[str]:
+                                       target_language: str, progress_callback: Optional[callable] = None) -> Optional[str]:
         """
         Create a translation presentation that preserves original slides and adds translated copies
         
@@ -3277,7 +3266,7 @@ Format as JSON with structure:
             file_id: Unique file identifier
             filename: Original filename
             target_language: Target language for translation
-            processing_tasks: Optional processing tasks dict for status updates
+            progress_callback: Optional callback function for progress updates (message, percentage)
             
         Returns:
             Output path or None on error
@@ -3290,9 +3279,8 @@ Format as JSON with structure:
             original_slide_count = len(prs.slides)
             
             # Duplicate slides in the correct order: Original 1, Translation 1, Original 2, Translation 2, etc.
-            if processing_tasks:
-                processing_tasks['message'] = f'Creating slides with proper ordering...'
-                processing_tasks['progress'] = {'total': 100, 'processed': 10, 'percentage': 10}
+            if progress_callback:
+                progress_callback('Creating slides with proper ordering...', 10)
             
             # Initialize translation service
             from .translations_service import TranslationsService
@@ -3320,10 +3308,9 @@ Format as JSON with structure:
                     self.logger.info(f"Translating slide {slide_num} of {original_slide_count}")
                     
                     # Update progress
-                    if processing_tasks:
+                    if progress_callback:
                         progress = 20 + int((i / original_slide_count) * 60)
-                        processing_tasks['progress'] = {'total': 100, 'processed': progress, 'percentage': progress}
-                        processing_tasks['message'] = f'Translating slide {slide_num}/{original_slide_count}...'
+                        progress_callback(f'Translating slide {slide_num}/{original_slide_count}...', progress)
                     
                     translated_slide = prs.slides[duplicate_idx]
                     
@@ -3359,9 +3346,8 @@ Format as JSON with structure:
                     continue
             
             # Now we need to reorder the slides: Original 1, Translation 1, Original 2, Translation 2, etc.
-            if processing_tasks:
-                processing_tasks['message'] = f'Reordering slides...'
-                processing_tasks['progress'] = {'total': 100, 'processed': 80, 'percentage': 80}
+            if progress_callback:
+                progress_callback('Reordering slides...', 80)
             
             # Reorder using a simpler approach: create the order we want by index manipulation
             current_slides = list(prs.slides)
@@ -3398,26 +3384,20 @@ Format as JSON with structure:
             
             prs.save(output_path)
             
-            if processing_tasks:
-                processing_tasks['status'] = 'completed'
-                processing_tasks['message'] = f'Translation complete! Original + {target_language} versions created'
-                processing_tasks['progress'] = {'total': 100, 'processed': 100, 'percentage': 100}
-                processing_tasks['translated_path'] = output_path
-                processing_tasks['has_translation'] = True
-                processing_tasks['translated_language'] = target_language
+            if progress_callback:
+                progress_callback(f'Translation complete! Original + {target_language} versions created', 100)
             
             self.logger.info(f"Translation presentation created: {output_path}")
             return output_path
             
         except Exception as e:
             self.logger.error(f"Error creating translation presentation: {e}")
-            if processing_tasks:
-                processing_tasks['status'] = 'error'
-                processing_tasks['message'] = f'Translation failed: {str(e)}'
+            if progress_callback:
+                progress_callback(f'Translation failed: {str(e)}', 100)
             return None
     
     def translate_presentation_in_place(self, file_path: str, file_id: str, filename: str,
-                                      target_language: str, processing_tasks: Optional[Dict] = None) -> Optional[str]:
+                                      target_language: str, progress_callback: Optional[callable] = None) -> Optional[str]:
         """
         Translate presentation by replacing original content (no slide duplication)
         
@@ -3426,7 +3406,7 @@ Format as JSON with structure:
             file_id: Unique file identifier
             filename: Original filename
             target_language: Target language for translation
-            processing_tasks: Optional processing tasks dict for status updates
+            progress_callback: Optional callback function for progress updates (message, percentage)
             
         Returns:
             Output path or None on error
@@ -3438,9 +3418,8 @@ Format as JSON with structure:
             prs = Presentation(file_path)
             total_slides = len(prs.slides)
             
-            if processing_tasks:
-                processing_tasks['message'] = f'Translating {total_slides} slides to {target_language}...'
-                processing_tasks['progress'] = {'total': 100, 'processed': 10, 'percentage': 10}
+            if progress_callback:
+                progress_callback(f'Translating {total_slides} slides to {target_language}...', 10)
             
             # Initialize translation service
             from .translations_service import TranslationsService
@@ -3453,10 +3432,9 @@ Format as JSON with structure:
                     self.logger.info(f"Translating slide {slide_num} of {total_slides}")
                     
                     # Update progress
-                    if processing_tasks:
+                    if progress_callback:
                         progress = 10 + int((slide_idx / total_slides) * 80)
-                        processing_tasks['progress'] = {'total': 100, 'processed': progress, 'percentage': progress}
-                        processing_tasks['message'] = f'Translating slide {slide_num}/{total_slides}...'
+                        progress_callback(f'Translating slide {slide_num}/{total_slides}...', progress)
                     
                     # Find all text shapes and translate them
                     text_shapes = []
@@ -3502,20 +3480,14 @@ Format as JSON with structure:
             
             prs.save(output_path)
             
-            if processing_tasks:
-                processing_tasks['status'] = 'completed'
-                processing_tasks['message'] = f'Translation complete! Content translated to {target_language}'
-                processing_tasks['progress'] = {'total': 100, 'processed': 100, 'percentage': 100}
-                processing_tasks['translated_path'] = output_path
-                processing_tasks['has_translation'] = True
-                processing_tasks['translated_language'] = target_language
+            if progress_callback:
+                progress_callback(f'Translation complete! Content translated to {target_language}', 100)
             
             self.logger.info(f"In-place translation presentation created: {output_path}")
             return output_path
             
         except Exception as e:
             self.logger.error(f"Error in in-place translation: {e}")
-            if processing_tasks:
-                processing_tasks['status'] = 'error'
-                processing_tasks['message'] = f'Translation failed: {str(e)}'
+            if progress_callback:
+                progress_callback(f'Translation failed: {str(e)}', 100)
             return None

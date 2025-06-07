@@ -1,8 +1,10 @@
-version: '3.8'
-
 services:
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
     ports:
       - "8000:8000"
     environment:
@@ -15,6 +17,10 @@ services:
       - ./outputs:/app/outputs
       - ./logs:/app/logs
       - ./instance:/app/instance
+      - ./app.py:/app/app.py:ro
+      - ./api_utils.py:/app/api_utils.py:ro
+      - ./anthropic_patch.py:/app/anthropic_patch.py:ro
+      - ./services:/app/services:ro
     restart: unless-stopped
     networks:
       - matcha-network
@@ -34,10 +40,8 @@ services:
     image: nginx:alpine
     ports:
       - "80:80"
-      - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/nginx/ssl:ro
+      - ./nginx-dev.conf:/etc/nginx/nginx.conf:ro
       - ./uploads:/app/uploads:ro
       - ./outputs:/app/outputs:ro
     depends_on:

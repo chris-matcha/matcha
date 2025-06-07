@@ -37,13 +37,15 @@ class TranslationsService(BaseService):
             self.client = None
             self.logger.warning("No Anthropic API key provided")
     
-    def translate_content(self, content: Dict[str, Any], target_language: str) -> Dict[str, Any]:
+    def translate_content(self, content: Dict[str, Any], target_language: str, 
+                         progress_callback: Optional[callable] = None) -> Dict[str, Any]:
         """
         Translate content to target language
         
         Args:
             content: Content to translate (pages or slides)
             target_language: Target language code
+            progress_callback: Optional callback for progress updates (message, percentage)
             
         Returns:
             Translated content
@@ -59,16 +61,37 @@ class TranslationsService(BaseService):
         # Handle PDF content
         if 'pages' in content:
             translated_content['pages'] = []
-            for page in content['pages']:
+            total_pages = len(content['pages'])
+            
+            if progress_callback:
+                progress_callback(f'Translating {total_pages} pages to {target_language}...', 10)
+            
+            for i, page in enumerate(content['pages']):
                 translated_page = self._translate_page(page, target_language)
                 translated_content['pages'].append(translated_page)
+                
+                if progress_callback and total_pages > 1:
+                    progress = 10 + int((i + 1) / total_pages * 80)
+                    progress_callback(f'Translated page {i + 1}/{total_pages}', progress)
         
         # Handle PowerPoint content
         elif 'slides' in content:
             translated_content['slides'] = []
-            for slide in content['slides']:
+            total_slides = len(content['slides'])
+            
+            if progress_callback:
+                progress_callback(f'Translating {total_slides} slides to {target_language}...', 10)
+            
+            for i, slide in enumerate(content['slides']):
                 translated_slide = self._translate_slide(slide, target_language)
                 translated_content['slides'].append(translated_slide)
+                
+                if progress_callback and total_slides > 1:
+                    progress = 10 + int((i + 1) / total_slides * 80)
+                    progress_callback(f'Translated slide {i + 1}/{total_slides}', progress)
+        
+        if progress_callback:
+            progress_callback('Translation completed successfully!', 100)
         
         return translated_content
     
